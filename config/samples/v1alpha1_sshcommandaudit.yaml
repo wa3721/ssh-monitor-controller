@@ -1,0 +1,20 @@
+apiVersion: ssh.controller.com/v1alpha1
+kind: SshCommandAudit
+metadata:
+  labels:
+    app.kubernetes.io/name: ssh-monitor-controller
+    app.kubernetes.io/managed-by: kustomize
+    user: root
+    sourceIp: 192.168.0.245
+  name: sshcommandaudit-sample
+spec:
+#  {
+#    "time": "2025-11-03 11:24:58",
+#    "user": "root",
+#    "ip": "192.168.0.245",
+#    "port": "58463",
+#    "pwd": "/root",
+#    "command": "apt install -y jq",
+#    "exit_code": "0"
+#  }
+# TODO(user): Add fields here
