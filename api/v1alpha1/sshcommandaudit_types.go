@@ -28,14 +28,24 @@ type SshCommandAuditSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of SshCommandAudit. Edit sshcommandaudit_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// SshCommandEntity is an Array  of SshCommandAudit.
+	SshCommandEntity []SshCommandEntity `json:"sshCommandEntity,omitempty"`
+}
+
+type SshCommandEntity struct {
+	Node      string `json:"node,omitempty"`
+	TimeStamp string `json:"time,omitempty"`
+	User      string `json:"user,omitempty"`
+	SrcIp     string `json:"ip,omitempty"`
+	SrcPort   string `json:"port,omitempty"`
+	WorkDir   string `json:"pwd,omitempty"`
+	Command   string `json:"command,omitempty"`
+	ExitCode  string `json:"exit_code,omitempty"`
 }
 
 // SshCommandAuditStatus defines the observed state of SshCommandAudit.
 type SshCommandAuditStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	TotalCommands *int32 `json:"totalCommands"`
 }
 
 // +kubebuilder:object:root=true

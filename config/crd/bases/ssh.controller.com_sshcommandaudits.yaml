@@ -39,13 +39,37 @@ spec:
           spec:
             description: SshCommandAuditSpec defines the desired state of SshCommandAudit.
             properties:
-              foo:
-                description: Foo is an example field of SshCommandAudit. Edit sshcommandaudit_types.go
-                  to remove/update
-                type: string
+              sshCommandEntity:
+                description: SshCommandEntity is an Array  of SshCommandAudit.
+                items:
+                  properties:
+                    command:
+                      type: string
+                    exit_code:
+                      type: string
+                    ip:
+                      type: string
+                    node:
+                      type: string
+                    port:
+                      type: string
+                    pwd:
+                      type: string
+                    time:
+                      type: string
+                    user:
+                      type: string
+                  type: object
+                type: array
             type: object
           status:
             description: SshCommandAuditStatus defines the observed state of SshCommandAudit.
+            properties:
+              totalCommands:
+                format: int32
+                type: integer
+            required:
+            - totalCommands
             type: object
         type: object
     served: true
