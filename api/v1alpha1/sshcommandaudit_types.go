@@ -29,7 +29,7 @@ type SshCommandAuditSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// SshCommandEntity is an Array  of SshCommandAudit.
-	SshCommandEntity []SshCommandEntity `json:"sshCommandEntity,omitempty"`
+	SshCommandEntity []*SshCommandEntity `json:"sshCommandEntity,omitempty"`
 }
 
 type SshCommandEntity struct {

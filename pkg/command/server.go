@@ -3,8 +3,10 @@ package command
 import (
 	"context"
 	"io"
+
 	"k8s.io/apiserver/pkg/server/healthz"
-	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
+
 	"net/http"
 	"strconv"
 	"time"
@@ -12,6 +14,7 @@ import (
 
 var DefaultPort = 8082
 var DefaultCommandChanLength = 1000
+var commandServerLog = ctrl.Log.WithName("command-server")
 
 var CmdChannel <-chan *string
 
@@ -80,7 +83,7 @@ func (s *DefaultServer) registerHandlers() {
 func (s *DefaultServer) commandHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		klog.ErrorS(err, "Failed to read body")
+		commandServerLog.Error(err, "Failed to read body")
 	}
 	defer r.Body.Close()
 	s.Command <- func() *string {
@@ -94,19 +97,19 @@ func (s *DefaultServer) commandHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *DefaultServer) Start(ctx context.Context) error {
 
-	klog.Info("Starting command server")
+	commandServerLog.Info("Starting command server")
 	s.registerHandlers()
 	srv := newHttpServer(s.ServeMux)
 	idleConnsClosed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		klog.Info("Shutting down command server with timeout of 1 minute")
+		commandServerLog.Info("Shutting down command server with timeout of 1 minute")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
 			// Error from closing listeners, or context timeout
-			klog.Error(err, "error shutting down the HTTP server")
+			commandServerLog.Error(err, "error shutting down the HTTP server")
 		}
 		close(idleConnsClosed)
 	}()
@@ -115,7 +118,7 @@ func (s *DefaultServer) Start(ctx context.Context) error {
 	if err := srv.ListenAndServe(); err != nil {
 		return err
 	}
-	klog.Info("Started command server")
+	commandServerLog.Info("Started command server")
 	<-idleConnsClosed
 	return nil
 }
