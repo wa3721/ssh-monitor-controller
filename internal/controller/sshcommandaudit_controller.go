@@ -48,7 +48,6 @@ func (r *SshCommandAuditReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
-
 	return ctrl.Result{}, nil
 }
 

@@ -50,6 +50,7 @@ type SshCommandAuditStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+//+kubebuilder:resource:scope=Cluster
 
 // SshCommandAudit is the Schema for the sshcommandaudits API.
 type SshCommandAudit struct {

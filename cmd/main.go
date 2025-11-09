@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"github.com/go-logr/logr"
 	"os"
 	"ssh-monitor-controller/pkg/command"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -142,7 +143,16 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
+	err = mgr.Add(&command.Listener{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		Log:           logr.Logger{},
+		EventRecorder: mgr.GetEventRecorderFor("command-listener"),
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to create Listener", "Listener", "SshCommandAudit")
+		return
+	}
 	if err = (&controller.SshCommandAuditReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -171,6 +181,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
