@@ -50,8 +50,10 @@ type SshCommandAuditStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
-//+kubebuilder:printcolumn:name="Desired Replicas",type=integer,JSONPath=".spec.metadata."
+//+kubebuilder:resource:scope=Cluster,shortName=sca
+//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".metadata.labels.ssh\\.monitor\\.io/NodeName"
+//+kubebuilder:printcolumn:name="SourceIP",type="string",JSONPath=".metadata.labels.ssh\\.monitor\\.io/SourceIP"
+//+kubebuilder:printcolumn:name="TotalCommands",type="number",JSONPath=".status.totalCommands"
 
 // SshCommandAudit is the Schema for the sshcommandaudits API.
 type SshCommandAudit struct {
