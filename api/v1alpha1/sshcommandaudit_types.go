@@ -45,12 +45,15 @@ type SshCommandEntity struct {
 
 // SshCommandAuditStatus defines the observed state of SshCommandAudit.
 type SshCommandAuditStatus struct {
-	TotalCommands *int32 `json:"totalCommands"`
+	TotalCommands int `json:"totalCommands"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
+//+kubebuilder:resource:scope=Cluster,shortName=sca
+//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".metadata.labels.ssh\\.monitor\\.io/NodeName"
+//+kubebuilder:printcolumn:name="SourceIP",type="string",JSONPath=".metadata.labels.ssh\\.monitor\\.io/SourceIP"
+//+kubebuilder:printcolumn:name="TotalCommands",type="number",JSONPath=".status.totalCommands"
 
 // SshCommandAudit is the Schema for the sshcommandaudits API.
 type SshCommandAudit struct {

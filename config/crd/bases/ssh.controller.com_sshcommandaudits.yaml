@@ -11,10 +11,22 @@ spec:
     kind: SshCommandAudit
     listKind: SshCommandAuditList
     plural: sshcommandaudits
+    shortNames:
+    - sca
     singular: sshcommandaudit
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.labels.ssh\.monitor\.io/NodeName
+      name: Node
+      type: string
+    - jsonPath: .metadata.labels.ssh\.monitor\.io/SourceIP
+      name: SourceIP
+      type: string
+    - jsonPath: .status.totalCommands
+      name: TotalCommands
+      type: number
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: SshCommandAudit is the Schema for the sshcommandaudits API.
@@ -66,7 +78,6 @@ spec:
             description: SshCommandAuditStatus defines the observed state of SshCommandAudit.
             properties:
               totalCommands:
-                format: int32
                 type: integer
             required:
             - totalCommands

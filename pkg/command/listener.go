@@ -8,14 +8,17 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/tools/record"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
-var (
-	commandListenerLog = ctrl.Log.WithName("CommandListener")
+const (
+	nodeLabel                   = "ssh.monitor.io/NodeName"
+	srcLabel                    = "ssh.monitor.io/SourceIP"
+	annotationByControllerKey   = "ssh.monitor.io/managedBy"
+	annotationByControllerValue = "sshAuditController"
 )
 
 type Listener struct {
@@ -30,31 +33,31 @@ func (l *Listener) ListenAndCreateOrUpdateCr(ctx context.Context) {
 		select {
 		case cmd := <-CmdChannel:
 			var cEntity v1alpha1.SshCommandEntity
-			err := json.Unmarshal([]byte(*cmd), &cEntity)
+			err := processCommand(cmd, &cEntity)
 			if err != nil {
-				commandListenerLog.Error(err, "Failed to unmarshal command")
+				continue
 			}
-			// create cr
 			//收到新的信号之后
 			//先找到创建时间为当天，并且满足label上同时存在 node 和scrip同时相同的cr，如果没有创建一个新的，如果存在，更新存在的cr
-			todayCr, err := l.findLabeledCrsToday(ctx, &cEntity)
+			existCr, err := l.findExistCr(ctx, &cEntity)
 			if err != nil {
-				commandListenerLog.Error(err, "Failed to find standard crs")
+				l.Log.Error(err, "Failed to find standard crs")
+				continue
 			}
 			//更新
-			if todayCr != nil {
-				patch := client.MergeFrom(todayCr.DeepCopy())
-				todayCr.Spec.SshCommandEntity = append(todayCr.Spec.SshCommandEntity, updateCommandEntity(&cEntity))
-				err = l.Client.Patch(ctx, todayCr, patch)
+			if existCr != nil {
+				err = l.updateExistCr(ctx, existCr.DeepCopy(), existCr, &cEntity)
 				if err != nil {
-					commandListenerLog.Error(err, "Failed to patch new command")
+					l.Log.Error(err, "Failed to update CR")
+					l.EventRecorder.Eventf(existCr, corev1.EventTypeWarning, "UpdateFailed", "Failed to append command into this. cmd is %s,error is %v,will skip...", cEntity.Command, err)
+					continue
 				}
 			} else {
 				//创建
-				cr := newSshCommandCr(&cEntity)
-				err = l.Client.Create(ctx, cr)
+				err = l.createCr(ctx, &cEntity)
 				if err != nil {
-					commandListenerLog.Error(err, "Failed to create new command")
+					l.Log.Error(err, "Failed to create new command")
+					continue
 				}
 			}
 		default:
@@ -63,13 +66,60 @@ func (l *Listener) ListenAndCreateOrUpdateCr(ctx context.Context) {
 	}
 }
 
-func (l *Listener) findLabeledCrsToday(ctx context.Context, entity *v1alpha1.SshCommandEntity) (*v1alpha1.SshCommandAudit, error) {
+func (l *Listener) createCr(ctx context.Context, cEntity *v1alpha1.SshCommandEntity) error {
+	o := func() error {
+		//创建
+		cr := newSshCommandCr(cEntity)
+		err := l.Client.Create(ctx, cr)
+		if err != nil {
+			l.Log.Error(err, "Failed to create new command")
+			return err
+		}
+		return nil
+	}
+	return retryWithDefault(ctx, o)
+}
+
+func (l *Listener) updateExistCr(ctx context.Context, cr, existCr *v1alpha1.SshCommandAudit, cEntity *v1alpha1.SshCommandEntity) error {
+	o := func() error {
+		patch := client.MergeFrom(cr)
+		existCr.Spec.SshCommandEntity = append(existCr.Spec.SshCommandEntity, updateCommandEntity(cEntity))
+		err := l.Client.Patch(ctx, existCr, patch)
+		if err != nil {
+			l.Log.Error(err, "Update failed for an existing CR.", "cmd", cEntity)
+			return err
+		}
+		return nil
+	}
+
+	return retryWithDefault(ctx, o)
+
+}
+
+func (l *Listener) findExistCr(ctx context.Context, entity *v1alpha1.SshCommandEntity) (*v1alpha1.SshCommandAudit, error) {
+	var maxRetries = 3
 	var allCrs v1alpha1.SshCommandAuditList
 	//列出所有打过标签的cr
-	err := l.Client.List(ctx, &allCrs, client.MatchingLabels{nodeLabel: entity.Node, srcLabel: entity.SrcIp})
-	if err != nil {
-		commandListenerLog.Error(err, "Failed to list all labeled crs")
-		return nil, err
+	for i := 0; i < maxRetries; i++ {
+		lastErr := l.Client.List(ctx, &allCrs, client.MatchingLabels{nodeLabel: entity.Node, srcLabel: entity.SrcIp})
+		if lastErr == nil {
+			break
+		}
+		l.Log.Error(lastErr, "Failed to list all labeled crs", "attempt", i+1, "maxRetries", maxRetries)
+		if i == maxRetries-1 {
+			return nil, lastErr
+		}
+		waitTime := time.Duration(1<<uint(i)) * time.Second
+		if waitTime > 10*time.Second {
+			waitTime = 10 * time.Second
+		}
+		select {
+		case <-time.After(waitTime):
+			// 继续重试
+		case <-ctx.Done():
+			l.Log.Info("Context cancelled, aborting retry")
+			return nil, ctx.Err()
+		}
 	}
 	// 长度为0说明没有创建过cr
 	if len(allCrs.Items) == 0 {
@@ -128,13 +178,6 @@ func updateCommandEntity(entity *v1alpha1.SshCommandEntity) *v1alpha1.SshCommand
 	}
 }
 
-const (
-	nodeLabel                   = "ssh.monitor.io/NodeName"
-	srcLabel                    = "ssh.monitor.io/SourceIP"
-	annotationByControllerKey   = "ssh.monitor.io/managedBy"
-	annotationByControllerValue = "sshAuditController"
-)
-
 func generateAnnotations() map[string]string {
 	return map[string]string{annotationByControllerKey: annotationByControllerValue}
 }
@@ -144,6 +187,7 @@ func generateCrLabels(entity *v1alpha1.SshCommandEntity) map[string]string {
 }
 
 func (l *Listener) Start(ctx context.Context) error {
+	l.Log.Info("starting listener for sshcommandaudit...")
 	go l.ListenAndCreateOrUpdateCr(ctx)
 	return nil
 }

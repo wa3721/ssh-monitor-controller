@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
-	"github.com/go-logr/logr"
 	"os"
 	"ssh-monitor-controller/pkg/command"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -61,6 +60,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var CollectorRetentionDays string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -71,6 +71,7 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&CollectorRetentionDays, "collectorRetentionDays", "7", "Set the retention time for CR")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -146,16 +147,30 @@ func main() {
 	err = mgr.Add(&command.Listener{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
-		Log:           logr.Logger{},
+		Log:           mgr.GetLogger().WithName("listener"),
 		EventRecorder: mgr.GetEventRecorderFor("command-listener"),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to create Listener", "Listener", "SshCommandAudit")
-		return
+		os.Exit(1)
 	}
-	if err = (&controller.SshCommandAuditReconciler{
+
+	if err = (&controller.Collector{
 		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Log:    mgr.GetLogger().WithName("Collector"),
+		RulesConf: &controller.Rule{
+			Params: map[string]string{"retentionDays": CollectorRetentionDays},
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "collector")
+		os.Exit(1)
+	}
+
+	if err = (&controller.SshCommandAuditReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		Log:           mgr.GetLogger().WithName("Reconciler"),
+		EventRecorder: mgr.GetEventRecorderFor("Reconciler"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "SshCommandAudit")
 		os.Exit(1)
