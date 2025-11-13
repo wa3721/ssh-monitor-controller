@@ -18,17 +18,24 @@ package controller
 
 import (
 	"context"
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	sshcontrollercomv1alpha1 "ssh-monitor-controller/api/v1alpha1"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // SshCommandAuditReconciler reconciles a SshCommandAudit object
 type SshCommandAuditReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme        *runtime.Scheme
+	Log           logr.Logger
+	EventRecorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=ssh.controller.com,resources=sshcommandaudits,verbs=get;list;watch;create;update;patch;delete
@@ -45,16 +52,36 @@ type SshCommandAuditReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *SshCommandAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	r.Log.Info("Reconciling SshCommandAudit")
+	var cr sshcontrollercomv1alpha1.SshCommandAudit
+	r.Log.Info("Reconciling", "request.Namespace", req.Namespace, "request.Name", req.Name)
+	err := r.Get(ctx, req.NamespacedName, &cr)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Log.Info("CR resource not found; may have been deleted.", "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
 
-	// TODO(user): your logic here
+	cr.Status.TotalCommands = len(cr.Spec.SshCommandEntity)
+	err = r.Status().Update(ctx, &cr)
+	if err != nil {
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, err
+		}
+		r.EventRecorder.Eventf(&cr, corev1.EventTypeWarning, "UpdateStatusFailed", "Failed to update this status,error is %v", err)
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SshCommandAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sshcontrollercomv1alpha1.SshCommandAudit{}).
-		Named("sshcommandaudit").
-		Complete(r)
+		Named("sshcommandaudit").WithOptions(controller.Options{
+		MaxConcurrentReconciles: 3,
+	}).Complete(r)
 }

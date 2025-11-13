@@ -70,7 +70,7 @@ func NewDefaultServer(options ...Options) Server {
 
 func (s *DefaultServer) registerHandlers() {
 	livezChecks := []healthz.HealthChecker{healthz.PingHealthz}
-	healthz.InstallPathHandler(s.ServeMux, "/livez", livezChecks...)
+	healthz.InstallPathHandler(s.ServeMux, "/healthz", livezChecks...)
 
 	readyzChecks := []healthz.HealthChecker{healthz.PingHealthz}
 	healthz.InstallPathHandler(s.ServeMux, "/readyz", readyzChecks...)
@@ -81,6 +81,10 @@ func (s *DefaultServer) registerHandlers() {
 
 // 添加缺失的处理函数实现
 func (s *DefaultServer) commandHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		commandServerLog.Error(err, "Failed to read body")
@@ -118,7 +122,6 @@ func (s *DefaultServer) Start(ctx context.Context) error {
 	if err := srv.ListenAndServe(); err != nil {
 		return err
 	}
-	commandServerLog.Info("Started command server")
 	<-idleConnsClosed
 	return nil
 }
